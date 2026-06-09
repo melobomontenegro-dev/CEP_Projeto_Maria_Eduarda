@@ -1,4 +1,4 @@
-# Avaliação CEP + ML — classificação de variedades de grãos de feijão
+# Avaliação CEP + ML —> classificação de variedades de grãos de feijão
 
 Trabalho individual da disciplina de Controle Estatístico de Processos do Departamento de Engenharia de Produção da Universidade de Brasília, ministrada pelo Prof. Andre Luiz Marques Serrano.
 
