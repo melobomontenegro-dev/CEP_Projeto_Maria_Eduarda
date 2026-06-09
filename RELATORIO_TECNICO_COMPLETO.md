@@ -1,838 +1,348 @@
-# RELATÓRIO TÉCNICO COMPLETO
-## Avaliação da Qualidade de Processo Agroindustrial com Técnicas Estatísticas e Machine Learning
+# Avaliação da qualidade de um processo de classificação de grãos de feijão por meio de Controle Estatístico de Processos e Machine Learning
 
-**Autora:** Maria Eduarda Lobo Montenegro
-**Instituição:** Universidade de Brasília — Departamento de Engenharia de Produção
-**Disciplina:** Controle Estatístico de Processos
-**Data:** Abril de 2026
-**Versão:** 1.0
-**Status:** Análise Técnica Executada e Validada
+**Maria Eduarda Lobo Montenegro** — matrícula 200033972
+Universidade de Brasília — Departamento de Engenharia de Produção
+Disciplina de Controle Estatístico de Processos
+Prof. Andre Luiz Marques Serrano
+Abril de 2026
 
 ---
 
-## ÍNDICE
+## Resumo
 
-1. [Resumo Executivo](#resumo-executivo)
-2. [Definição do Problema](#definicao-do-problema)
-3. [Dataset e Fontes](#dataset-e-fontes)
-4. [Metodologia Aplicada](#metodologia-aplicada)
-5. [Análise Exploratória (EDA)](#analise-exploratoria)
-6. [Controle Estatístico de Processos (CEP)](#cep)
-7. [Preparação de Dados](#preparacao-de-dados)
-8. [Modelagem Preditiva](#modelagem-preditiva)
-9. [Otimização de Hiperparâmetros](#otimizacao)
-10. [Avaliação Final](#avaliacao-final)
-11. [Conclusões e Recomendações](#conclusoes)
-12. [Anexos Técnicos](#anexos)
+Este trabalho aplica as ferramentas de Controle Estatístico de Processos (CEP) e algoritmos de aprendizado de máquina ao problema de classificação automática de variedades comerciais de grãos de feijão. O conjunto de dados utilizado é o *Dry Bean Dataset*, publicado por Koklu e Ozkan (2020) e disponível no UCI Machine Learning Repository, contendo 13.611 grãos individuais descritos por 16 atributos morfológicos extraídos por visão computacional. Foram construídas cartas de controle X-barra e R e calculados os índices Cp, Cpk, Pp e Ppk para duas variáveis dimensionais (MajorAxisLength e Area). Em seguida, três algoritmos de classificação supervisionada foram treinados e comparados — Regressão Logística, Random Forest e Support Vector Machine com núcleo radial — com validação cruzada estratificada de cinco subdivisões. O Random Forest passou por otimização de hiperparâmetros via GridSearchCV. O modelo otimizado atingiu F1-macro de 0,9036 no conjunto de teste, com acurácia de 91,73%. A análise de capacidade do processo, no entanto, indicou Cpk de 0,38 a 0,47 — valores que caracterizam o processo como incapaz segundo os critérios de Montgomery (2020). Discuto criticamente este achado e mostro que ele decorre principalmente da heterogeneidade entre variedades, não de uma falha intrínseca do processo de manufatura.
 
 ---
 
-## RESUMO EXECUTIVO
+## 1. Por que este problema e este dataset
 
-Este relatório apresenta os resultados de uma **análise integrada de qualidade** aplicada a um processo agroindustrial de classificação de grãos de feijão, combinando técnicas de **Controle Estatístico de Processos (CEP)** com **Machine Learning** para classificação automática multiclasse de variedades.
+A escolha do tema não foi aleatória. O modelo de relatório técnico discutido em aula utilizou o *Steel Plates Faults Dataset*, que descreve sete tipos de defeito em chapas de aço a partir de medidas geométricas e de luminosidade obtidas por análise de imagem. Para esta avaliação individual, o requisito era trabalhar com um banco de dados diferente do utilizado em sala, mas que permitisse aplicar a mesma metodologia.
 
-### Principais Achados
+Procurei um problema com paralelos estruturais ao Steel Plates — também multiclasse, também baseado em medidas extraídas de imagem, também aplicável a controle de qualidade industrial — mas em um domínio que me parecesse mais próximo da realidade brasileira. O Dry Bean Dataset atende a esses critérios. Tem sete classes (variedades comerciais: SEKER, BARBUNYA, BOMBAY, CALI, DERMASON, HOROZ e SIRA), tem features de imagem (16 medidas morfológicas obtidas por câmera de alta resolução em uma classificadora industrial) e o problema de fundo é genuinamente relevante: o Brasil é um dos maiores consumidores e produtores de feijão do mundo, e a classificação manual de variedades ainda é prática comum em boa parte das cooperativas e beneficiadoras.
 
-| Aspecto | Resultado |
-|---|---|
-| **Tipo de Análise** | Classificação Multiclasse (7 variedades de feijão) |
-| **Dataset Utilizado** | Dry Bean Dataset (UCI Repository) |
-| **Amostras Analisadas** | 12.487 (após remoção de outliers) |
-| **Features Utilizadas** | 16 variáveis morfológicas numéricas |
-| **Melhor Modelo (CV)** | SVM (RBF) — F1-macro 0,9410 |
-| **Modelo Otimizado** | Random Forest (GridSearchCV) — F1-macro 0,9036 (teste) |
-| **Acurácia no Teste** | 91,73% |
-| **Precisão Média (macro)** | 93,48% |
-| **Recall Médio (macro)** | 88,23% |
-| **Status CEP** | Fora de Controle Estatístico |
-| **Capacidade do Processo (Cpk)** | 0,467 (MajorAxisLength) e 0,376 (Area) |
-
-### Recomendação Principal
-
-**Implementar o modelo Random Forest otimizado para classificação automática de variedades em linha de beneficiamento, associado a ações de CEP para reduzir variabilidade do processo. Avaliar também o uso do SVM (RBF), que obteve o melhor desempenho em validação cruzada.**
+A inspeção visual humana é lenta, subjetiva (depende do treinamento do operador e de seu cansaço ao longo do turno) e custosa. Substituí-la — ou ao menos complementá-la — por um sistema automático que combine monitoramento estatístico do processo (CEP) e classificação por aprendizado de máquina é o tipo de aplicação onde a engenharia de produção encontra valor real.
 
 ---
 
-<a id="definicao-do-problema"></a>
-## DEFINIÇÃO DO PROBLEMA
+## 2. O conjunto de dados
 
-### Contexto de Negócio
+O dataset é carregado diretamente do repositório do UCI por meio do pacote `ucimlrepo`. Esta escolha torna o trabalho integralmente reproduzível: qualquer pessoa que executar o notebook obterá exatamente os mesmos dados, sem precisar baixar arquivos manualmente ou se preocupar com versões.
 
-O processo de beneficiamento de grãos de feijão envolve a classificação de variedades para padronização comercial, atendendo especificações de mercado e requisitos regulatórios. Os desafios críticos são:
+Originalmente são 13.611 amostras descritas por 17 colunas — 16 features numéricas (todas `float64` ou `int64`) e uma coluna categórica (`Class`) com sete categorias. Não há valores ausentes em nenhuma coluna. Esse nível de limpeza é incomum em datasets reais e reflete o fato de que o conjunto foi construído especificamente para fins de pesquisa em aprendizado de máquina.
 
-- **Problema:** Inspeção e classificação manual são lentas, subjetivas e custosas
-- **Impacto:** Perdas por mistura de variedades e rejeições incorretas
-- **Oportunidade:** Automatizar a detecção e classificação usando dados morfológicos obtidos por visão computacional
+### Distribuição das classes
 
-### Objetivos Estratégicos
+A target apresenta um desbalanceamento moderado. DERMASON é a variedade mais frequente, com 3.546 grãos (26,05% das amostras), enquanto BOMBAY é a menos frequente, com 522 grãos (3,84%).
 
-1. **Classificar automaticamente** 7 variedades de feijão (SEKER, BARBUNYA, BOMBAY, CALI, DERMASON, HOROZ, SIRA)
-2. **Reduzir falsos negativos** (grãos classificados incorretamente como aprovados)
-3. **Minimizar falsos positivos** (grãos conformes rejeitados)
-4. **Implementar solução** operacionalizável em produção
+![Distribuição das variedades no dataset](figuras/fig_01_cell05.png)
+*Gráfico 1. Contagem absoluta de grãos por variedade. DERMASON e SIRA dominam o dataset, enquanto BOMBAY é nitidamente sub-representada.* A razão entre a classe majoritária e a minoritária é de aproximadamente sete vezes. Esse grau de desbalanceamento não é extremo a ponto de exigir técnicas pesadas de balanceamento como SMOTE ou ADASYN, mas é suficiente para tornar a acurácia uma métrica enganosa — um classificador que sempre previsse DERMASON teria mais de um quarto das previsões "certas" sem ter aprendido nada útil. Por isso, optei pela **F1-macro** como métrica principal, conforme discutido nas aulas de avaliação de modelos. O F1-macro pondera as sete classes igualmente, independentemente do tamanho de cada uma.
 
-### Premissas da Análise
+### As 16 features morfológicas
 
-- Dados representam processo real de manufatura agroindustrial
-- Medições morfológicas obtidas por câmera e processamento de imagem são confiáveis
-- Não há viés temporal significativo no dataset
-- Classes de variedade são mutuamente exclusivas
+As features podem ser organizadas em três grupos.
 
-### Variáveis Estratégicas
+O primeiro grupo reúne medidas de **dimensão e geometria**: Area (área do grão em pixels), Perimeter, MajorAxisLength e MinorAxisLength (comprimento dos eixos principal e secundário), ConvexArea (área do menor polígono convexo que contém o grão) e EquivDiameter (diâmetro de um círculo de mesma área).
 
-| Tipo | Variáveis | Exemplos |
-|------|-----------|----------|
-| **Entrada (Features)** | Geométricas, de forma, fatores estruturais | Area, MajorAxisLength, Eccentricity |
-| **Saída (Target)** | 7 variedades | SEKER, BARBUNYA, BOMBAY, CALI, DERMASON, HOROZ, SIRA |
+O segundo grupo agrega **razões e índices de forma**: AspectRatio (razão entre os dois eixos), Eccentricity (excentricidade da elipse equivalente), Extent (razão entre a área do grão e a área do retângulo que o contém), Solidity (razão entre a área e a área convexa), Roundness e Compactness.
+
+O terceiro grupo, mais técnico, agrupa os chamados **shape factors** — quatro fatores adimensionais (ShapeFactor1 a 4) que combinam as medidas anteriores em proporções específicas usadas na literatura de visão computacional aplicada à classificação de sementes.
 
 ---
 
-<a id="dataset-e-fontes"></a>
-## DATASET E FONTES
+## 3. Metodologia
 
-### Origem dos Dados
+O fluxo de trabalho segue a estrutura clássica de um projeto integrado de CEP e análise preditiva, apoiado nas referências básicas da disciplina — em especial Montgomery (2020), capítulos 4 a 8 para o CEP, e o material de aulas para a parte de machine learning.
 
-**Fonte:** UCI Machine Learning Repository
-**Nome:** Dry Bean Dataset
-**Link:** https://archive.ics.uci.edu/dataset/602/dry+bean+dataset
-**Publicação:** 2020 — Koklu & Ozkan
+A sequência é a seguinte: análise exploratória inicial; construção de cartas de controle X-barra e R com subgrupos de tamanho cinco; cálculo dos índices de capacidade Cp, Cpk, Pp e Ppk; tratamento de outliers por Z-score; padronização das features; divisão estratificada em 70% para treino e 30% para teste; treinamento e validação cruzada estratificada de cinco subdivisões para três algoritmos (Regressão Logística, Random Forest e SVM com núcleo RBF); otimização de hiperparâmetros do Random Forest por GridSearchCV; avaliação final no conjunto de teste e discussão crítica dos resultados.
 
-### Características do Dataset
-
-```
-Dimensões Originais: 13.611 amostras × 17 colunas (16 features + 1 target)
-Dimensões Limpas:    12.487 amostras × 16 features + 1 target
-Outliers Removidos:  1.124 amostras (8,26%)
-Valores Ausentes:    0 (dataset completo)
-```
-
-### Distribuição de Classes (Target) — Dataset Original
-
-| Variedade | Contagem | Proporção |
-|-----------|----------|-----------|
-| DERMASON | 3.546 | 26,05% |
-| SIRA | 2.636 | 19,37% |
-| SEKER | 2.027 | 14,89% |
-| HOROZ | 1.928 | 14,16% |
-| CALI | 1.630 | 11,98% |
-| BARBUNYA | 1.322 | 9,71% |
-| BOMBAY | 522 | 3,84% |
-| **TOTAL** | **13.611** | **100,00%** |
-
-**Conclusão:** Classes **desbalanceadas** (DERMASON ~26% vs BOMBAY ~3,8%), justificando o uso de **F1-macro** como métrica principal.
-
-![Figura 1 — Distribuição das 7 variedades de feijão no dataset](figuras/fig_01_cell05.png)
-**Figura 1.** Distribuição de frequência das 7 variedades no dataset original, evidenciando o desbalanceamento entre DERMASON (classe majoritária) e BOMBAY (minoritária).
-
-### Dicionário das 16 Features Numéricas
-
-#### Grupo 1: Dimensões e Geometria
-
-```
-Area               → Área do grão em pixels (tamanho total)
-Perimeter          → Perímetro da borda do grão
-MajorAxisLength    → Comprimento do eixo maior
-MinorAxisLength    → Comprimento do eixo menor
-ConvexArea         → Área do menor polígono convexo contendo o grão
-EquivDiameter      → Diâmetro equivalente (círculo de mesma área)
-```
-
-#### Grupo 2: Razões e Índices de Forma
-
-```
-AspectRatio        → Razão MajorAxisLength / MinorAxisLength
-Eccentricity       → Excentricidade da elipse equivalente [0-1]
-Extent             → Razão pixels / bounding box
-Solidity           → Razão área / área convexa
-Roundness          → (4·π·A) / P²  — índice de arredondamento
-Compactness        → EquivDiameter / MajorAxisLength
-```
-
-#### Grupo 3: Shape Factors (fatores de forma estruturais)
-
-```
-ShapeFactor1       → MajorAxisLength / Area
-ShapeFactor2       → MinorAxisLength / Area
-ShapeFactor3       → Area / MajorAxisLength²
-ShapeFactor4       → Área / (π · L · l / 4)
-```
+As bibliotecas utilizadas são as padrão de Python para ciência de dados: pandas e numpy para manipulação, scikit-learn para os modelos e avaliação, matplotlib e seaborn para visualização, scipy para Z-score, statsmodels para apoio estatístico e ucimlrepo para o carregamento do dataset. A execução foi feita no Google Colab. A semente aleatória foi fixada em 42 em todos os componentes estocásticos, garantindo reprodutibilidade.
 
 ---
 
-<a id="metodologia-aplicada"></a>
-## METODOLOGIA APLICADA
+## 4. Análise exploratória
 
-### Framework de Análise
+### 4.1 Estatísticas descritivas e variabilidade
 
-```
-┌─────────────────────────────────────────────────┐
-│ ETAPA 1: DEFINIÇÃO E EXPLORAÇÃO                 │
-├─────────────────────────────────────────────────┤
-│ → Carregamento via UCI Repository (ucimlrepo)   │
-│ → EDA: distribuições, correlações, boxplots     │
-└─────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────┐
-│ ETAPA 2: CONTROLE ESTATÍSTICO DE PROCESSOS      │
-├─────────────────────────────────────────────────┤
-│ → Cartas X-barra e R (n=5)                      │
-│ → Índices Cp, Cpk, Pp, Ppk                      │
-│ → Diagnóstico de controle e capacidade          │
-└─────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────┐
-│ ETAPA 3: PREPARAÇÃO E TRANSFORMAÇÃO             │
-├─────────────────────────────────────────────────┤
-│ → Detecção e remoção de outliers (Z-score 3σ)   │
-│ → LabelEncoder + StandardScaler                 │
-│ → Split 70/30 estratificado                     │
-│ → Validação de data leakage                     │
-└─────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────┐
-│ ETAPA 4: MODELAGEM PREDITIVA                    │
-├─────────────────────────────────────────────────┤
-│ → Regressão Logística                           │
-│ → Random Forest                                 │
-│ → SVM (RBF)                                     │
-│ → Validação Cruzada (5-fold Stratified)         │
-└─────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────┐
-│ ETAPA 5: OTIMIZAÇÃO                             │
-├─────────────────────────────────────────────────┤
-│ → GridSearchCV sobre Random Forest              │
-│ → 27 combinações × 5 folds = 135 ajustes        │
-└─────────────────────────────────────────────────┘
-                        ↓
-┌─────────────────────────────────────────────────┐
-│ ETAPA 6: AVALIAÇÃO FINAL                        │
-├─────────────────────────────────────────────────┤
-│ → Métricas no conjunto de teste                 │
-│ → Matriz de confusão                            │
-│ → Feature importance                            │
-└─────────────────────────────────────────────────┘
-```
+Calculei as estatísticas básicas para todas as 16 features e adicionei o coeficiente de variação (CV, em percentual), que é o desvio padrão dividido pela média. O CV é informativo porque normaliza a dispersão pelo nível, permitindo comparação entre features de magnitudes muito diferentes.
 
-### Tecnologias e Bibliotecas
+Os resultados mais marcantes:
 
-| Categoria | Ferramentas | Versão |
-|-----------|------------|--------|
-| **Processamento** | pandas, numpy | 2.2.2, 2.0.2 |
-| **ML/AI** | scikit-learn | 1.3+ |
-| **Visualização** | matplotlib, seaborn | 3.7+, 0.12+ |
-| **Estatística** | scipy, statsmodels | 1.11+, 0.14+ |
-| **Dataset** | ucimlrepo | 0.0.3+ |
-| **Ambiente** | Python, Google Colab | 3.10+ |
+Area apresenta CV de aproximadamente 55,28%, e ConvexArea de 55,38%. Estes são os valores mais altos do conjunto, e por uma margem considerável. A explicação está na heterogeneidade entre variedades — BOMBAY tem grãos fisicamente muito maiores do que as demais, o que arrasta a média e infla o desvio padrão das medidas dimensionais.
+
+Na outra ponta, Solidity e ShapeFactor4 têm CV inferior a 0,5%. Solidity é uma razão limitada superiormente por 1 (área não pode ser maior que área convexa), e para grãos sem grandes côncavidades fica naturalmente próxima desse limite. ShapeFactor4 segue lógica semelhante.
+
+Esse contraste tem uma implicação direta para o CEP. Features com CV baixo serão fáceis de manter sob controle estatístico, mas pouco discriminantes. Features com CV alto, embora mais "desafiadoras" do ponto de vista do controle, carregam mais informação para a classificação. Por isso escolhi MajorAxisLength e Area como variáveis-foco para as cartas de controle: ambas estão na faixa de CV intermediária a alta e são representativas do que um inspetor humano observaria primeiro ao classificar uma amostra.
+
+### 4.2 Distribuições marginais
+
+Os histogramas das principais features confirmam visualmente o que as estatísticas indicaram. Area e Perimeter apresentam forte assimetria à direita, com cauda longa onde está o BOMBAY. MajorAxisLength e MinorAxisLength mostram distribuições visualmente multimodais — vejo dois ou três picos sobrepostos, o que reflete a estrutura latente das classes (grãos de tamanhos diferentes formam picos diferentes na distribuição agregada). AspectRatio e Eccentricity, por serem quantidades adimensionais, são as mais "bem comportadas".
+
+![Distribuições marginais das principais features](figuras/fig_02_cell08.png)
+*Gráfico 2. Histogramas das seis features morfológicas mais relevantes. A assimetria à direita em Area e Perimeter, e a multimodalidade em MajorAxisLength, são pistas visuais da heterogeneidade entre variedades.*
+
+Essa assimetria tem uma consequência importante para o CEP que farei adiante. Os índices Cp e Cpk são derivados assumindo que a variável segue uma distribuição aproximadamente normal (Montgomery, 2020, Cap. 8). Quando essa premissa é violada, os índices podem subestimar ou superestimar a capacidade real do processo. Vou retomar essa discussão na seção de CEP.
+
+### 4.3 Estrutura de correlações
+
+A matriz de correlação de Pearson entre as 16 features revela uma estrutura de redundância pronunciada. Os pares mais correlacionados são:
+
+- **Area e ConvexArea**: correlação próxima de 1,00 (na prática, idênticas — para grãos sem côncavidades importantes, as duas medidas coincidem).
+- **Area e EquivDiameter**: correlação acima de 0,99 (relação determinística por construção — EquivDiameter é função direta de Area).
+- **Perimeter e MajorAxisLength**: cerca de 0,97.
+- **AspectRatio e Eccentricity**: cerca de 0,96.
+- **Compactness e ShapeFactor3**: cerca de 0,98.
+
+![Matriz de correlação entre as 16 features](figuras/fig_03_cell09.png)
+*Gráfico 3. Matriz de correlação de Pearson. Os blocos intensos (próximos de +1 ou -1) indicam pares redundantes — em especial as três medidas de tamanho (Area, ConvexArea, EquivDiameter) e o par AspectRatio/Eccentricity.*
+
+Essa redundância é problemática para a Regressão Logística — a multicolinearidade gera instabilidade nos coeficientes e dificulta a interpretação. Para o Random Forest, é menos crítico (árvores selecionam features individualmente em cada split), e para o SVM com núcleo RBF é praticamente irrelevante (o kernel mapeia tudo para um espaço de dimensionalidade superior). Por isso, decidi manter as 16 features para os três modelos, deixando a Regressão Logística "sofrer" um pouco como referência comparativa, em vez de remover variáveis e perder a possibilidade de comparar todos os algoritmos em pé de igualdade.
 
 ---
 
-<a id="analise-exploratoria"></a>
-## ANÁLISE EXPLORATÓRIA (EDA)
+## 5. Controle Estatístico de Processos
 
-### 1. Inspeção Inicial
+### 5.1 Construção das cartas X-barra e R
 
-```
-Dataset Shape:    (13.611, 17)
-Colunas:          16 features numéricas + 1 target (Class)
-Valores Ausentes: 0 (dataset completo)
-Tipos de Dados:   14 float64 + 2 int64 + 1 object
-Memória:          2,37 MB
-```
+As cartas de controle por variáveis foram construídas seguindo a metodologia descrita em Montgomery (2020), capítulo 6. O tamanho de subgrupo escolhido foi **n = 5**, valor recomendado pela literatura para um equilíbrio entre sensibilidade a desvios e custo amostral. As constantes correspondentes para esse tamanho são A₂ = 0,577, D₃ = 0 e D₄ = 2,114 (tabela A do Montgomery).
 
-### 2. Estatísticas Descritivas
+A amostra utilizada para construir as cartas consistiu em 40 subgrupos de cinco amostras cada, totalizando 200 grãos sorteados aleatoriamente do dataset original. Essa quantidade está acima do mínimo de 20 a 25 subgrupos sugerido por Montgomery para uma estimativa inicial confiável dos limites de controle.
 
-| Variável | Média | Desvio | Mínimo | Máximo | CV (%) |
-|----------|------:|-------:|-------:|-------:|-------:|
-| **Area** | 53.048 | 29.324 | 20.420 | 254.616 | 55,28 |
-| **Perimeter** | 855,28 | 214,29 | 524,74 | 1.985,37 | 25,05 |
-| **MajorAxisLength** | 320,14 | 85,69 | 183,60 | 738,86 | 26,77 |
-| **MinorAxisLength** | 202,27 | 44,97 | 122,51 | 460,20 | 22,23 |
-| **AspectRatio** | 1,58 | 0,25 | 1,03 | 2,43 | 15,58 |
-| **Eccentricity** | 0,75 | 0,09 | 0,22 | 0,91 | 12,25 |
-| **ConvexArea** | 53.768 | 29.775 | 20.684 | 263.261 | 55,38 |
-| **EquivDiameter** | 253,06 | 59,18 | 161,24 | 569,37 | 23,38 |
-| **Extent** | 0,75 | 0,05 | 0,56 | 0,87 | 6,55 |
-| **Solidity** | 0,99 | 0,01 | 0,92 | 1,00 | 0,47 |
-| **Roundness** | 0,87 | 0,06 | 0,49 | 0,99 | 6,82 |
-| **Compactness** | 0,80 | 0,06 | 0,64 | 0,99 | 7,72 |
-| **ShapeFactor1** | 0,007 | 0,001 | 0,003 | 0,010 | 17,19 |
-| **ShapeFactor2** | 0,002 | 0,001 | 0,001 | 0,004 | 34,73 |
-| **ShapeFactor3** | 0,64 | 0,10 | 0,41 | 0,98 | 15,38 |
-| **ShapeFactor4** | 0,995 | 0,004 | 0,948 | 1,000 | 0,44 |
+#### MajorAxisLength
 
-### 3. Interpretação das Distribuições
+Para a carta X-barra de MajorAxisLength, a linha central ficou em torno de 320,14 (média dos 200 grãos amostrados) e nenhum ponto excedeu os limites superior ou inferior de controle. Isso indica estabilidade na média do processo para essa variável.
 
-- **Maior variabilidade:** Area (CV = 55,28%) e ConvexArea (CV = 55,38%) — diferenças dimensionais grandes entre variedades (BOMBAY é um grão muito maior)
-- **Menor variabilidade:** ShapeFactor4 (CV = 0,44%) e Solidity (CV = 0,47%) — propriedades estruturais altamente uniformes
-- **Area e Perimeter:** apresentam assimetria à direita (right-skewed), devido à presença de BOMBAY
+A carta R (amplitude), no entanto, apresentou **um subgrupo com amplitude acima do UCL**. Isso é uma indicação clara de causa especial: dentro daquele subgrupo específico, deve ter caído pelo menos um grão de variedade muito diferente dos demais (provavelmente um BOMBAY misturado com DERMASON ou SIRA), elevando a amplitude para fora do padrão esperado.
 
-![Figura 2 — Distribuições das variáveis-chave](figuras/fig_02_cell08.png)
-**Figura 2.** Histogramas das principais features morfológicas (Area, Perimeter, MajorAxisLength, MinorAxisLength, AspectRatio, Eccentricity), evidenciando assimetria à direita em Area e Perimeter.
+#### Area
 
-### 4. Análise de Correlações (Pearson)
+A situação se repete e se agrava para Area. A carta X-barra permanece estável (linha central em torno de 53.048, nenhum ponto fora dos limites), mas a carta R apresenta **oito subgrupos com amplitude acima do UCL**, ou seja, 20% dos subgrupos. Isso é uma forte indicação de que o processo, do jeito que foi amostrado, está fora de controle estatístico em termos de variabilidade.
 
-Pares de features com **alta multicolinearidade** (|r| > 0,90) foram identificados:
+![Cartas X-barra e R para MajorAxisLength](figuras/fig_05_cell12.png)
+*Gráfico 4. Cartas X-barra e R para MajorAxisLength, com n=5 e 40 subgrupos. A média permanece estável dentro dos limites, mas a amplitude apresenta um ponto isolado acima do UCL.*
 
-- `Area` ↔ `ConvexArea` → r ≈ +1,00 (redundância total esperada)
-- `Area` ↔ `EquivDiameter` → r ≈ +0,99
-- `Perimeter` ↔ `MajorAxisLength` → r ≈ +0,97
-- `Eccentricity` ↔ `AspectRatio` → r ≈ +0,96
-- `Compactness` ↔ `ShapeFactor3` → r ≈ +0,98
-- `Solidity` ↔ `ShapeFactor4` → r ≈ +0,90
+![Cartas X-barra e R para Area](figuras/fig_07_cell14.png)
+*Gráfico 5. Cartas X-barra e R para Area. A média também é estável, mas oito subgrupos (20% da amostra) apresentam amplitude fora dos limites — sinal claro de causas especiais.*
 
-**Interpretação:** Multicolinearidade esperada entre medidas dimensionais (Area/ConvexArea/EquivDiameter) e entre medidas de forma (Eccentricity/AspectRatio). Aceitável para modelos baseados em árvores (Random Forest), mas deve-se atentar em Regressão Logística.
+A interpretação que faço — e que considero o achado mais importante deste trabalho até aqui — é que essa instabilidade não decorre de uma falha no processo de manufatura ou de instabilidade na máquina de classificação. Decorre simplesmente do fato de que o "processo" que estou analisando, na prática, é uma mistura aleatória de sete variedades distintas. Subgrupos que por acaso contêm BOMBAY apresentam amplitudes muito maiores do que aqueles que contêm apenas variedades de tamanho similar. **A solução adequada para este processo seria estratificar a linha por variedade e aplicar CEP separadamente em cada uma**, não tentar aplicar CEP a um processo essencialmente heterogêneo.
 
-![Figura 3 — Matriz de correlação (Pearson) entre as 16 features](figuras/fig_03_cell09.png)
-**Figura 3.** Heatmap das correlações de Pearson entre as 16 features numéricas. Blocos em vermelho intenso indicam multicolinearidade entre medidas dimensionais (Area/ConvexArea/EquivDiameter) e entre medidas de forma.
+### 5.2 Índices de capacidade
 
-![Figura 4 — Boxplots das variáveis-chave por variedade](figuras/fig_04_cell10.png)
-**Figura 4.** Boxplots por classe para as variáveis-chave, evidenciando a separabilidade de BOMBAY (tamanho extremo) e a sobreposição entre SIRA e DERMASON.
+Para calcular Cp, Cpk, Pp e Ppk, precisei definir limites de especificação (LSL e USL). Esta é uma escolha que reconheço como uma limitação do trabalho: em um cenário real, os limites seriam definidos pelo cliente comercial ou pela engenharia de processo da empresa, com base em requisitos de mercado e em estudos prévios. Aqui, não disponho dessa informação, então adotei valores que considero razoáveis para a faixa de classificação comercial:
 
-### 5. Insights da EDA
+- **MajorAxisLength**: LSL = 200 pixels, USL = 700 pixels (faixa de 500).
+- **Area**: LSL = 20.000 pixels, USL = 150.000 pixels (faixa de 130.000).
 
-**Pontos positivos**
-- Qualidade elevada: sem valores ausentes, tipos corretos
-- Features bem distribuídas com unidades interpretáveis
-- Variedade BOMBAY claramente separável por tamanho (Area muito maior)
+Esses limites foram escolhidos para cobrir a faixa observada das principais variedades, excluindo apenas os extremos mais atípicos. Considerei usar limites mais estreitos, mas isso resultaria em Cpk próximo de zero, o que não traria insight adicional sobre o comportamento do processo.
 
-**Pontos de atenção**
-- Forte multicolinearidade em variáveis dimensionais
-- Assimetria em Area e Perimeter
-- Classes desbalanceadas (BOMBAY 3,84% vs DERMASON 26,05%)
-
----
-
-<a id="cep"></a>
-## CONTROLE ESTATÍSTICO DE PROCESSOS (CEP)
-
-### 1. Cartas de Controle X-barra e R
-
-**Configuração:**
-- Tamanho do subgrupo: **n = 5**
-- Número de subgrupos: **40** (200 amostras amostradas aleatoriamente)
-- Constantes para n=5: **A₂ = 0,577**, **D₃ = 0**, **D₄ = 2,114**
-
-#### Para MajorAxisLength
-
-```
-Carta X-barra:
-├─ Linha Central (X̄):  ~320,14
-├─ UCL:                  dependente do subgrupo
-├─ LCL:                  dependente do subgrupo
-└─ Status: 0 pontos fora do controle
-
-Carta R:
-├─ Linha Central (R̄):   amplitude média
-├─ UCL:                  D₄ × R̄
-└─ Status: 1 ponto fora do limite superior
-```
-
-**Interpretação:**
-- Carta X-barra estável
-- Carta R apresenta **1 subgrupo com amplitude anormal** → indicativo de causa especial em um lote específico
-
-![Figura 5 — Cartas X-barra e R para MajorAxisLength](figuras/fig_05_cell12.png)
-**Figura 5.** Cartas de controle X-barra (topo) e R (base) para MajorAxisLength, com n=5 e 40 subgrupos. A carta X-barra encontra-se sob controle, enquanto a carta R apresenta um ponto isolado acima do UCL.
-
-![Figura 6 — Histograma de capacidade para MajorAxisLength](figuras/fig_06_cell13.png)
-**Figura 6.** Histograma da variável MajorAxisLength com linhas de especificação LSL=200 e USL=700 e curva normal ajustada. O deslocamento da média em relação ao centro das especificações explica o Cpk = 0,467.
-
-#### Para Area
-
-```
-Carta X-barra:
-├─ Linha Central:  ~53.048
-└─ Status: 0 pontos fora do controle
-
-Carta R:
-└─ Status: 8 pontos fora do limite superior (20%)
-```
-
-**Interpretação:**
-- Carta X-barra estável na média
-- Carta R apresenta **8 subgrupos com amplitude fora do UCL** → presença de BOMBAY (variedade muito maior) gera amplitude anormal em subgrupos mistos
-- Necessidade clara de **estratificar o processo por variedade** para aplicar CEP individualmente
-
-![Figura 7 — Cartas X-barra e R para Area](figuras/fig_07_cell14.png)
-**Figura 7.** Cartas de controle X-barra e R para a variável Area. A carta R apresenta 8 pontos acima do UCL (20% dos subgrupos), indicando processo fora de controle — reflexo direto da mistura de variedades na mesma linha.
-
-![Figura 8 — Histograma de capacidade para Area](figuras/fig_08_cell14.png)
-**Figura 8.** Histograma da variável Area com LSL=20.000 e USL=150.000. A distribuição é fortemente assimétrica à direita (cauda de BOMBAY), resultando em Cpk = 0,376 (processo incapaz).
-
-### 2. Índices de Capacidade do Processo
-
-#### Especificações Assumidas (típicas de classificação comercial)
-
-| Variável | LSL | USL | Faixa |
-|----------|----:|----:|------:|
-| **MajorAxisLength** | 200 | 700 | 500 |
-| **Area** | 20.000 | 150.000 | 130.000 |
-
-#### Resultados Consolidados
+Os resultados foram:
 
 | Índice | MajorAxisLength | Area |
-|--------|:---------------:|:----:|
-| **Cp** | 0,972 | 0,739 |
-| **Cpk** | 0,467 | 0,376 |
-| **Pp** | 0,972 | 0,739 |
-| **Ppk** | 0,467 | 0,376 |
+|---|---:|---:|
+| Cp | 0,972 | 0,739 |
+| Cpk | 0,467 | 0,376 |
+| Pp | 0,972 | 0,739 |
+| Ppk | 0,467 | 0,376 |
 
-#### Classificação da Capacidade (Indústria)
+Segundo a classificação convencional discutida em Montgomery (2020, Cap. 8), valores de Cpk inferiores a 1,00 caracterizam um processo **incapaz** — incapaz, no sentido técnico, de atender consistentemente às especificações dentro dos limites adotados. Para classificar um processo como "capaz", a literatura sugere Cpk de pelo menos 1,33; para "excelente", acima de 1,67.
 
-| Cpk | Classificação | Risco de Defeito | Status |
-|-----|---------------|------------------|:------:|
-| < 0,67 | Muito baixa | > 4,5% | — |
-| 0,67 – 1,00 | Baixa / Incapaz | 0,3% – 4,5% | **← MajorAxisLength (Cpk = 0,47)** e **Area (Cpk = 0,38)** |
-| 1,00 – 1,33 | Marginal | 0,001% – 0,3% | — |
-| 1,33 – 1,67 | Capaz | < 0,001% | — |
-| > 1,67 | Excelente | Negligenciável | — |
+![Histograma de capacidade para Area](figuras/fig_08_cell14.png)
+*Gráfico 6. Distribuição de Area com indicação dos limites LSL e USL adotados. A cauda à direita (BOMBAY) puxa a média para longe do centro do intervalo de especificação, gerando Cpk = 0,38.*
 
-**Conclusão CEP:**
-- Ambas as variáveis apresentam **Cpk << 1,33** → **processo INCAPAZ** de atender especificações consistentemente
-- Cpk < Cp indica **descentralização** (média afastada do ponto médio das especificações)
-- Principal causa: **heterogeneidade inerente** à mistura de 7 variedades de grãos em um mesmo processo
-- **Ação requerida:** segregar linha por variedade ou ajustar especificações por família de grãos
+A diferença entre Cp e Cpk indica que o processo, além de pouco capaz, está descentralizado — a média não coincide com o centro do intervalo de especificação. O fato de Pp e Ppk coincidirem com Cp e Cpk indica que não há diferença relevante entre a variabilidade dentro dos subgrupos e a variabilidade global, ou seja, o processo não apresenta tendência sistemática ao longo das amostras.
+
+A conclusão dessa análise reforça o que as cartas R já tinham mostrado: o "processo" agregado é incapaz porque é uma mistura de sete subprocessos diferentes (um por variedade). A recomendação técnica, alinhada com a engenharia de processo aplicada à agroindústria, seria a segregação de linhas — uma linha por variedade ou família de variedades de tamanho similar — para que CEP individualizado possa ser aplicado de forma significativa.
 
 ---
 
-<a id="preparacao-de-dados"></a>
-## PREPARAÇÃO DE DADOS
+## 6. Preparação dos dados para modelagem
 
-### 1. Encoding da Variável-Alvo
+### 6.1 Codificação da target
 
-```
-LabelEncoder — Mapeamento:
-├─ 0 → BARBUNYA
-├─ 1 → BOMBAY
-├─ 2 → CALI
-├─ 3 → DERMASON
-├─ 4 → HOROZ
-├─ 5 → SEKER
-└─ 6 → SIRA
-```
+A coluna `Class` foi convertida em valores numéricos por `LabelEncoder` do scikit-learn, gerando o seguinte mapeamento alfabético: BARBUNYA → 0, BOMBAY → 1, CALI → 2, DERMASON → 3, HOROZ → 4, SEKER → 5, SIRA → 6.
 
-### 2. Detecção e Remoção de Outliers
+### 6.2 Tratamento de outliers
 
-**Método: Z-score (limite 3σ)**
+Adotei o método do Z-score com limite de 3 desvios padrão para identificação de outliers. Em uma distribuição normal, este critério remove aproximadamente 0,27% das observações (regra 99,73%). Na prática, com 16 features e distribuições não perfeitamente normais, a taxa efetiva foi maior.
 
-```python
-from scipy.stats import zscore
-z_scores = df[numeric_cols].apply(zscore)
-mask = (z_scores.abs() > 3).any(axis=1)
-df_clean = df[~mask]
-```
+Foram removidas 1.124 amostras, ou seja, 8,26% do dataset original. O conjunto limpo ficou com 12.487 amostras. As features que mais contribuíram para remoções foram MinorAxisLength (508 outliers detectados), Area e ConvexArea (483 cada), EquivDiameter (465) e Perimeter (404).
 
-**Resultados:**
+**Esta foi a decisão metodológica que mais me incomodou no trabalho.** O Z-score global tratou BOMBAY de forma claramente injusta. Por ser uma variedade fisicamente muito maior, a maioria das amostras de BOMBAY foi classificada como "outlier" por critérios estatísticos globais — não por serem grãos defeituosos ou medições erradas, mas simplesmente por serem maiores do que a média do conjunto. Isso reduziu drasticamente a representação dessa classe no conjunto de treino e teste, com consequências que discuto adiante na seção de resultados.
 
-```
-Amostras Originais: 13.611
-Outliers Removidos:  1.124 (8,26%)
-Amostras Finais:    12.487 (91,74%)
-```
+Em uma próxima iteração do trabalho, refaria essa etapa aplicando o critério de Z-score **por classe**, em vez de globalmente. Isso preservaria a variabilidade natural intra-classe sem confundi-la com variabilidade entre classes. Não fiz essa correção agora porque o foco era reproduzir a metodologia do modelo de referência, mas reconheço essa como a melhoria mais importante para um próximo ciclo.
 
-**Top 5 Features com Mais Outliers:**
+### 6.3 Padronização e divisão treino/teste
 
-| Feature | Outliers Detectados |
-|---------|--------------------:|
-| MinorAxisLength | 508 |
-| Area | 483 |
-| ConvexArea | 483 |
-| EquivDiameter | 465 |
-| Perimeter | 404 |
+Apliquei `StandardScaler` para padronização (média zero, desvio padrão unitário). O `fit` foi feito apenas no conjunto de treino, e o `transform` foi aplicado tanto ao treino quanto ao teste — esta ordem evita o chamado *data leakage*, ou seja, a contaminação do treino com informações estatísticas do conjunto de teste.
 
-**Observação crítica:** A variedade **BOMBAY**, por ter grãos significativamente maiores que as demais, teve a maioria de suas amostras removidas pelo critério Z-score > 3. Isso reduziu drasticamente a representatividade da classe no conjunto de teste (apenas **3 amostras**), o que afeta a confiabilidade das métricas específicas dessa classe.
+A padronização é essencial para a Regressão Logística e para o SVM, ambos sensíveis à escala das features. O Random Forest é invariante à escala (as árvores fazem splits por valor, e a magnitude absoluta não importa), mas a padronização não prejudica seu desempenho, então mantive o pipeline uniforme.
 
-### 3. Padronização (StandardScaler)
+A divisão treino/teste foi 70/30, estratificada pela target, com `random_state=42`. O resultado:
 
-**Fórmula:** $X_{scaled} = (X - \mu) / \sigma$
+- Treino: 8.740 amostras.
+- Teste: 3.747 amostras.
 
-- **fit** apenas no conjunto de treino (evita data leakage)
-- **transform** aplicado aos conjuntos de treino e teste
-- Necessário para Regressão Logística e SVM
-- Random Forest é invariante à escala (mas padronização não prejudica)
-
-### 4. Divisão Treino/Teste
-
-```python
-train_test_split(X, y, test_size=0.30, random_state=42, stratify=y)
-```
-
-| Conjunto | Amostras | Proporção |
-|----------|---------:|----------:|
-| **Treino** | 8.740 | 70,0% |
-| **Teste** | 3.747 | 30,0% |
-| **Total** | 12.487 | 100,0% |
-
-**Distribuição por classe no Treino:**
-
-| Classe | Amostras | % |
-|--------|---------:|--:|
-| DERMASON | 2.464 | 28,2% |
-| SIRA | 1.836 | 21,0% |
-| SEKER | 1.328 | 15,2% |
-| HOROZ | 1.142 | 13,1% |
-| CALI | 1.081 | 12,4% |
-| BARBUNYA | 882 | 10,1% |
-| BOMBAY | 7 | 0,1% |
-
-### 5. Validação de Data Leakage
-
-```
-✓ StandardScaler: fit no treino, transform no teste
-✓ Outliers removidos ANTES do split
-✓ Split estratificado por classe
-✓ Sem vazamento de informação entre conjuntos
-```
+A distribuição por classe no treino preserva as proporções originais, com uma exceção crítica: BOMBAY ficou com apenas 7 amostras no treino e (mais grave) 3 no conjunto de teste. Isto é uma consequência direta da remoção agressiva de outliers feita na etapa anterior, e voltarei a este ponto na discussão dos resultados.
 
 ---
 
-<a id="modelagem-preditiva"></a>
-## MODELAGEM PREDITIVA
+## 7. Modelagem
 
-### 1. Seleção de Algoritmos
+### 7.1 Escolha dos algoritmos
 
-#### Algoritmo 1: Regressão Logística
+Selecionei três algoritmos com filosofias bem diferentes, conforme discutido em aula:
 
-- Modelo linear multiclasse (solver `lbfgs`, multinomial)
-- Baseline interpretável
-- Sensível à escala (requer padronização)
+A **Regressão Logística** (com solver `lbfgs` em modo multinomial) serve como linha de base interpretável. É um modelo linear, com coeficientes que indicam contribuição direta de cada feature, e oferece um ponto de comparação para entender o "ganho" dos modelos não-lineares.
 
-#### Algoritmo 2: Random Forest
+O **Random Forest** (com 100 árvores em sua configuração inicial) é um ensemble não-paramétrico que captura interações entre features e não-linearidades sem necessidade de transformações prévias. Espera-se que tenha desempenho superior à Regressão Logística em problemas com estrutura complexa.
 
-- Ensemble de 100 árvores
-- Captura não-linearidades e interações
-- Invariante à escala
-- Fornece feature importance
+O **Support Vector Machine** com núcleo radial (RBF, com C=1.0 e gamma `scale`) é eficaz em espaços de dimensionalidade moderada como o nosso (16 features). O kernel RBF projeta os dados em um espaço de dimensionalidade superior onde a separação linear se torna possível.
 
-#### Algoritmo 3: Support Vector Machine (SVM)
+### 7.2 Validação cruzada
 
-- Kernel RBF (Radial Basis Function)
-- Eficaz em espaços de alta dimensionalidade (16 features)
-- Maximiza margem de separação
+Cada modelo foi avaliado por validação cruzada estratificada de cinco subdivisões (`StratifiedKFold`, k=5), com a métrica F1-macro como critério principal. Os resultados:
 
-### 2. Validação Cruzada — 5-fold Stratified
+| Modelo | F1-macro (média) | Desvio padrão |
+|---|---:|---:|
+| SVM (RBF) | **0,9410** | 0,0054 |
+| Regressão Logística | 0,9098 | 0,0622 |
+| Random Forest | 0,9064 | 0,0588 |
 
-#### Resultados (Métrica: F1-macro)
+O resultado me surpreendeu — e este é o tipo de surpresa que vale anotar. A literatura geral e a intuição diziam que o Random Forest seria o vencedor entre os três modelos para um problema tabular como este. Não foi.
 
-| Modelo | F1-macro Médio | Desvio Padrão | Melhor Fold | Pior Fold |
-|--------|---------------:|--------------:|------------:|----------:|
-| **SVM (RBF)** | **0,9410** | **0,0054** | 0,9474 | 0,9339 |
-| **Logistic Regression** | 0,9098 | 0,0622 | 0,9465 | 0,7856 |
-| **Random Forest** | 0,9064 | 0,0588 | 0,9376 | 0,7889 |
+O SVM com núcleo RBF apresentou não apenas a maior média (0,9410 versus 0,9064 do Random Forest), mas também — e isso é o mais importante — **um desvio padrão dez vezes menor entre os folds** (0,0054 contra 0,0588). Ou seja, o SVM foi consistente em todos os subconjuntos da validação cruzada, enquanto o Random Forest e a Regressão Logística oscilaram bastante. No fold de pior desempenho, a Regressão Logística e o Random Forest caíram para próximo de 0,78, enquanto o SVM se manteve sempre acima de 0,93.
 
-**Análise:**
+Investigando esses números, identifiquei o que provavelmente causou essa instabilidade: o fold de pior desempenho deve ter sido aquele em que BOMBAY ficou sobre-representada na validação, gerando previsões instáveis em uma classe com poucos exemplos. O SVM, ao trabalhar em um espaço de kernel diferente, parece ter sido mais robusto a essa instabilidade.
 
-```
-┌──────────────────────────────────────────────┐
-│      COMPARAÇÃO — VALIDAÇÃO CRUZADA          │
-├──────────────────────────────────────────────┤
-│ SVM (RBF)        ████████████ 0,9410         │
-│ Logistic Regr.   ███████████░ 0,9098         │
-│ Random Forest    ███████████░ 0,9064         │
-└──────────────────────────────────────────────┘
-```
+![Comparação dos três modelos na validação cruzada](figuras/fig_09_cell21.png)
+*Gráfico 7. Comparação dos três modelos por validação cruzada. As caixas indicam dispersão entre os cinco folds — o SVM destaca-se não tanto pela média superior, mas pela consistência (caixa quase imperceptível).*
 
-**Observações importantes:**
+### 7.3 Diagnóstico de overfitting
 
-1. **SVM venceu a validação cruzada** com F1-macro = 0,9410 e desvio muito baixo (0,0054), indicando excelente estabilidade
-2. Logistic Regression e Random Forest apresentaram **alta variância entre folds** (±0,06), sugerindo sensibilidade ao fold específico escolhido — provavelmente relacionada à distribuição desbalanceada da classe BOMBAY
-3. Em um fold específico, LogReg e RF caíram para ~0,79, enquanto o SVM manteve ≥ 0,93 em todos os folds
+Para diagnosticar overfitting, comparei o F1-macro no treino e no teste para cada modelo:
 
-![Figura 9 — Comparação visual dos três modelos em CV](figuras/fig_09_cell21.png)
-**Figura 9.** Comparação visual dos três modelos em validação cruzada 5-fold. O SVM (RBF) apresenta média superior e menor variância entre folds, enquanto Regressão Logística e Random Forest mostram maior dispersão.
+| Modelo | F1 treino | F1 teste | Diferença |
+|---|---:|---:|---:|
+| Regressão Logística | 0,9396 | 0,9359 | 0,0037 |
+| Random Forest | 0,9999 | 0,9041 | 0,0958 |
+| SVM (RBF) | 0,9444 | 0,9380 | 0,0064 |
 
-### 3. Diagnóstico: Underfitting vs Overfitting
+O Random Forest sem otimização apresenta um padrão clássico de **overfitting severo**: F1 de 0,9999 no treino (praticamente perfeito) contra 0,9041 no teste. A diferença de quase dez pontos percentuais entre treino e teste é o sinal mais claro possível de que o modelo memorizou os dados de treino e não está generalizando bem. SVM e Regressão Logística, em contraste, têm diferenças treino-teste de menos de um ponto percentual, indicando equilíbrio adequado.
 
-| Modelo | F1 Treino | F1 Teste | Diferença | Status |
-|--------|----------:|---------:|----------:|:-------|
-| Logistic Regression | 0,9396 | 0,9359 | +0,0037 | **EQUILIBRADO** |
-| Random Forest (sem tuning) | 0,9999 | 0,9041 | +0,0958 | **OVERFITTING** |
-| SVM (RBF) | 0,9444 | 0,9380 | +0,0064 | **EQUILIBRADO** |
-
-**Conclusão do diagnóstico:**
-- Random Forest **sem otimização** apresenta **overfitting severo** (treino 99,99%, teste 90,41%) — justifica diretamente a necessidade da Etapa de otimização
-- SVM e Logistic Regression estão equilibrados
-- A otimização via GridSearch pode mitigar o overfitting do RF
+Este achado justifica diretamente a etapa de otimização que vem a seguir — não como um adorno metodológico, mas como uma correção necessária para o problema concreto que o Random Forest apresenta.
 
 ---
 
-<a id="otimizacao"></a>
-## OTIMIZAÇÃO DE HIPERPARÂMETROS
+## 8. Otimização do Random Forest
 
-### 1. Estratégia
+Apesar do SVM ter sido o melhor na validação cruzada, segui a metodologia do modelo de referência e apliquei GridSearchCV ao Random Forest. O motivo é metodológico: o exercício é demonstrar o domínio da técnica de otimização, e o RF é o modelo com mais hiperparâmetros relevantes para otimizar entre os três. Em uma próxima iteração, faria sentido também rodar GridSearch no SVM.
 
-Seguindo a metodologia do modelo de referência, foi aplicado **GridSearchCV** sobre o **Random Forest**.
+O grid de hiperparâmetros foi:
 
-### 2. Grid Search para Random Forest
+- `n_estimators`: 100, 200 ou 300 árvores;
+- `max_depth`: 10, 20 ou ilimitado (`None`);
+- `min_samples_split`: 2, 5 ou 10.
 
-```python
-param_grid = {
-    'n_estimators': [100, 200, 300],
-    'max_depth': [10, 20, None],
-    'min_samples_split': [2, 5, 10]
-}
-```
+São 3 × 3 × 3 = 27 combinações, cada uma avaliada em cinco folds, totalizando 135 ajustes de modelo.
 
-**Total de combinações:** 3 × 3 × 3 = **27 modelos** × 5 folds = **135 ajustes**
-
-### 3. Top 5 Combinações
-
-| Rank | n_estimators | max_depth | min_samples_split | F1-macro CV | Tempo |
-|------|:------------:|:---------:|:-----------------:|------------:|------:|
-| 🥇 | **200** | **20** | **5** | **0,9360** | 8,27s |
-| 🥈 | 200 | 20 | 10 | 0,9360 | 8,21s |
-| 🥉 | 300 | None | 5 | 0,9359 | 12,21s |
-| 4 | 200 | None | 5 | 0,9358 | 8,22s |
-| 5 | 300 | 20 | 10 | 0,9356 | 12,25s |
-
-### 4. Modelo Otimizado Selecionado
-
-```python
-RandomForestClassifier(
-    n_estimators=200,        # 200 árvores (bom balanço)
-    max_depth=20,            # Profundidade controlada (reduz overfitting)
-    min_samples_split=5,     # Evita fragmentação excessiva
-    random_state=42,
-    n_jobs=-1
-)
-```
-
-**Desempenho final:**
-- CV F1-macro: **0,9360**
-- Ganho vs. RF padrão (0,9064): **+3,26%**
-- Tempo médio de treino: **8,27 s**
-
-### 5. Impacto da Otimização
-
-```
-RF Padrão (CV):    0,9064
-RF Otimizado (CV): 0,9360
-──────────────────────────
-Melhoria:          +0,0296 (+3,26%)
-```
-
-A otimização **reduziu a variância** entre folds e **mitigou o overfitting** observado no RF padrão.
+A melhor configuração encontrada foi `n_estimators=200`, `max_depth=20`, `min_samples_split=5`, com F1-macro médio em validação cruzada de **0,9360** — um ganho de 3,26 pontos percentuais sobre a configuração padrão (0,9064). O `max_depth=20` (em vez de profundidade ilimitada) e o `min_samples_split=5` (em vez de 2) atuam como regularizadores, controlando o crescimento das árvores e mitigando o overfitting observado anteriormente.
 
 ---
 
-<a id="avaliacao-final"></a>
-## AVALIAÇÃO FINAL
+## 9. Avaliação final no conjunto de teste
 
-### 1. Performance no Conjunto de Teste — Random Forest Otimizado
+### 9.1 Métricas agregadas (Random Forest otimizado)
 
-| Métrica | Valor | Interpretação |
-|---------|------:|---------------|
-| **Acurácia** | 0,9173 | 91,73% de previsões corretas |
-| **F1-macro** | **0,9036** | 90,36% — balanço precisão/recall |
-| **F1-weighted** | 0,9170 | 91,70% ponderado pelo suporte |
-| **Precisão (macro)** | 0,9348 | 93,48% de positivos corretos |
-| **Recall (macro)** | 0,8823 | 88,23% de positivos detectados |
+| Métrica | Valor |
+|---|---:|
+| Acurácia | 0,9173 |
+| F1-macro | 0,9036 |
+| F1-weighted | 0,9170 |
+| Precisão (macro) | 0,9348 |
+| Recall (macro) | 0,8823 |
 
-### 2. Performance por Classe
+### 9.2 Desempenho por classe
 
-| Classe | Precisão | Recall | F1-score | Suporte | Status |
-|--------|---------:|-------:|---------:|--------:|:-------|
-| **HOROZ** | 0,9550 | 0,9531 | **0,9540** | 490 | ⭐⭐⭐⭐⭐ Melhor desempenho |
-| **SEKER** | 0,9296 | 0,9508 | 0,9401 | 569 | ⭐⭐⭐⭐⭐ |
-| **CALI** | 0,9367 | 0,9266 | 0,9316 | 463 | ⭐⭐⭐⭐⭐ |
-| **DERMASON** | 0,9025 | 0,9375 | 0,9196 | 1.056 | ⭐⭐⭐⭐ |
-| **BARBUNYA** | 0,9361 | 0,8892 | 0,9120 | 379 | ⭐⭐⭐⭐ |
-| **SIRA** | 0,8841 | 0,8526 | 0,8680 | 787 | ⭐⭐⭐ Mais difícil |
-| **BOMBAY** | 1,0000 | 0,6667 | 0,8000 | 3 | ⚠️ Suporte insuficiente |
+| Classe | Precisão | Recall | F1 | Suporte |
+|---|---:|---:|---:|---:|
+| HOROZ | 0,9550 | 0,9531 | 0,9540 | 490 |
+| SEKER | 0,9296 | 0,9508 | 0,9401 | 569 |
+| CALI | 0,9367 | 0,9266 | 0,9316 | 463 |
+| DERMASON | 0,9025 | 0,9375 | 0,9196 | 1.056 |
+| BARBUNYA | 0,9361 | 0,8892 | 0,9120 | 379 |
+| SIRA | 0,8841 | 0,8526 | 0,8680 | 787 |
+| BOMBAY | 1,0000 | 0,6667 | 0,8000 | 3 |
 
-### 3. Análise Detalhada
+Algumas observações sobre estes números:
 
-**Melhor classe — HOROZ (F1 = 0,9540):** grãos com morfologia distinta (alongados, compactos), bem separáveis das demais.
+**HOROZ** foi a classe mais bem classificada (F1 de 0,954). Investigando os dados, é uma variedade com morfologia bem distinta — grãos alongados e relativamente compactos, com pouca sobreposição morfológica com as outras. Era esperado que fosse fácil de identificar.
 
-**Pior classe entre as robustas — SIRA (F1 = 0,8680):** variedade morfologicamente próxima de DERMASON, gerando confusão na classificação.
+**SIRA** foi a classe mais difícil entre as bem representadas (F1 de 0,868). A matriz de confusão mostra que a maior fonte de erro é a confusão com DERMASON. Faz sentido: na inspeção visual, as duas variedades têm tamanho e forma muito parecidos, e mesmo um classificador automático com 16 features tem dificuldade em separá-las.
 
-**Caso especial — BOMBAY (F1 = 0,8000, n = 3):** apenas 3 amostras no conjunto de teste. Os outliers Z-score removeram a maioria das amostras (BOMBAY é a variedade maior, com valores extremos). O resultado por classe é estatisticamente frágil. **Recomenda-se revisão do critério de outlier para essa variedade** em um próximo ciclo.
+**BOMBAY** apresenta o resultado mais delicado de interpretar. F1 de 0,800, mas com apenas três amostras no conjunto de teste — duas classificadas corretamente, uma errada. Esse valor é estatisticamente frágil; mudar uma única previsão alteraria o F1 em mais de 30 pontos percentuais. **A precisão de 1,00 e o recall de 0,667 reportados aqui são essencialmente artefatos de tamanho amostral, não medidas confiáveis de desempenho.** Como discuti na seção 6.2, esse problema vem da remoção agressiva de outliers, e seria corrigido refazendo essa etapa com critério por classe.
 
-### 4. Matriz de Confusão
+### 9.3 Matriz de confusão e importância das features
 
-- **Diagonal principal forte** (valores elevados)
-- **Confusão principal:** SIRA ↔ DERMASON (morfologicamente similares)
-- Erros marginais dispersos em pares específicos
+![Matriz de confusão do Random Forest otimizado](figuras/fig_10_cell27.png)
+*Gráfico 8. Matriz de confusão no conjunto de teste. A diagonal concentra a vasta maioria dos casos; a confusão mais relevante ocorre entre SIRA e DERMASON, variedades morfologicamente próximas.*
 
-![Figura 10 — Matriz de confusão do Random Forest otimizado](figuras/fig_10_cell27.png)
-**Figura 10.** Matriz de confusão do Random Forest otimizado no conjunto de teste (3.747 amostras). A diagonal principal concentra a grande maioria das classificações; a principal fonte de erro é o par SIRA ↔ DERMASON.
+A matriz de confusão mostra a diagonal principal dominante, com a maior parte dos erros concentrada no par SIRA ↔ DERMASON, como antecipado pela análise das classes. Os demais erros são pulverizados, sem padrão sistemático preocupante.
 
-### 5. Feature Importance — Random Forest Otimizado
+A análise de importância das features feita pelo Random Forest otimizado coloca no topo do ranking os fatores de forma (ShapeFactor3 e Compactness) e as medidas de tamanho (Area, MajorAxisLength). Esse resultado tem uma interpretação relevante: as razões morfológicas (adimensionais, normalizadas) discriminam melhor do que as medidas absolutas de tamanho. Isso faz sentido na perspectiva de classificação de variedades — o que define uma variedade não é apenas o tamanho, mas o "formato" do grão.
 
-As features mais importantes são tipicamente:
+![Importância das features no Random Forest otimizado](figuras/fig_11_cell28.png)
+*Gráfico 9. Importância das 16 features segundo o Random Forest otimizado. Shape factors e medidas de compactação aparecem entre as mais discriminantes.*
 
-| Rank | Feature | Descrição |
-|:----:|---------|-----------|
-| 1 | ShapeFactor3 / Compactness | Razão estrutural área/eixo |
-| 2 | Area / ConvexArea | Tamanho absoluto |
-| 3 | MajorAxisLength | Dimensão principal |
-| 4 | AspectRatio / Eccentricity | Forma elongada vs redonda |
-| 5 | Perimeter | Borda do grão |
+### 9.4 Comparação final entre os três modelos
 
-**Insight:** as **razões morfológicas** (fatores de forma) discriminam melhor as variedades do que as medidas dimensionais absolutas.
+| Modelo | F1-macro CV | F1-macro Teste |
+|---|---:|---:|
+| Regressão Logística | 0,9098 | 0,9359 |
+| Random Forest (padrão) | 0,9064 | 0,9041 |
+| Random Forest (otimizado) | 0,9360 | 0,9036 |
+| SVM (RBF) | 0,9410 | 0,9380 |
 
-![Figura 11 — Importância das features no Random Forest otimizado](figuras/fig_11_cell28.png)
-**Figura 11.** Ranking de importância das 16 features segundo o Random Forest otimizado. Shape factors e medidas de compacidade dominam o topo, confirmando que razões morfológicas são mais discriminantes do que dimensões absolutas.
-
-### 6. Comparação Final entre Modelos no Teste
-
-```
-┌──────────────────────────────────────────────┐
-│      PERFORMANCE NO CONJUNTO TESTE           │
-├──────────────────────────────────────────────┤
-│ SVM (RBF)           ████████████ 0,9380      │
-│ Logistic Regr.      ████████████ 0,9359      │
-│ Random Forest Opt.  ████████████ 0,9036      │
-│ Random Forest       ████████████ 0,9041      │
-└──────────────────────────────────────────────┘
-```
-
-**Ressalva importante:** embora o **Random Forest otimizado** tenha sido o modelo recomendado pela metodologia (seguindo o modelo de referência), o **SVM (RBF)** apresentou desempenho equivalente ou superior em CV (0,9410) e no teste (0,9380), com **menor variância** entre folds. Em uma próxima iteração, recomenda-se aplicar GridSearch também ao SVM.
+Ressalva: o Random Forest otimizado **não superou** o SVM nem mesmo a Regressão Logística no conjunto de teste, embora tenha sido melhor no CV. Esse padrão de "otimizado piora no teste" é um sinal residual de que o GridSearch encontrou uma configuração ajustada aos folds de validação que não generalizou perfeitamente para o teste retido. Em uma próxima iteração, faria sentido (i) usar um conjunto de validação separado em vez de só CV, e (ii) aplicar GridSearch também ao SVM.
 
 ---
 
-<a id="conclusoes"></a>
-## CONCLUSÕES E RECOMENDAÇÕES
+## 10. Limitações e o que faria diferente
 
-### 1. Síntese das Descobertas
+Listo abaixo, em ordem de impacto, as limitações que identifiquei no trabalho:
 
-| Aspecto | Status | Evidência |
-|---------|:------:|-----------|
-| **Controle Estatístico** | ❌ Fora de controle | Cartas R com pontos fora do UCL |
-| **Capacidade do Processo** | ❌ Incapaz | Cpk = 0,47 (MajorAxis) e 0,38 (Area) |
-| **Classificação Automática (ML)** | ✅ Viável | F1-macro = 0,9036 no teste |
-| **Melhor Modelo CV** | SVM (RBF) | F1 = 0,9410 (menor variância) |
-| **Modelo Otimizado** | Random Forest | F1 = 0,9360 (CV) / 0,9036 (teste) |
-| **Classe Mais Crítica** | BOMBAY | Suporte reduzido pelos outliers |
+**Tratamento de outliers em BOMBAY.** Como já discuti, a remoção de outliers por Z-score global penalizou desproporcionalmente a classe BOMBAY, que tem características físicas atípicas em relação ao restante do dataset. O resultado foi um suporte de apenas três amostras no conjunto de teste para esta classe, o que torna as métricas específicas dela estatisticamente frágeis. A correção natural seria aplicar Z-score por classe.
 
-### 2. Recomendações por Horizonte
+**Limites de especificação assumidos sem fonte externa.** Os LSL e USL adotados para o cálculo dos índices de capacidade foram escolhidos com base em uma análise visual da distribuição das principais variedades, não em uma especificação real de mercado. Em uma aplicação industrial, essa definição precisaria vir do cliente comercial ou da engenharia da empresa.
 
-#### Curto Prazo (0–3 meses)
+**CEP aplicado a um processo heterogêneo.** Como mostrei na seção 5, o "processo" analisado é, na prática, uma mistura de sete subprocessos (um por variedade). Aplicar CEP global a essa mistura captura mais a heterogeneidade entre classes do que a estabilidade real de cada processo. A análise mais útil seria construir cartas separadas por variedade.
 
-1. **Implementar cartas de controle em tempo real** para MajorAxisLength e Area
-2. **Segregar a linha de produção por variedade** — reduz a variabilidade artificial causada pela mistura de grãos
-3. **Pilotar o modelo RF otimizado** em estação de classificação automática com amostragem
-4. **Revisar critério de outliers para BOMBAY** — o Z-score global é inadequado para variedades minoritárias grandes
+**Ausência de dimensão temporal.** O dataset não traz informação sobre ordem de coleta dos grãos, o que impede qualquer análise de tendências ao longo do tempo, padrões de safra ou desgaste de equipamento. Para um trabalho real de CEP, essa dimensão seria essencial.
 
-**Investimento:** baixo
-**ROI esperado:** redução de 20–30% nos erros de classificação manual
+**Otimização aplicada apenas ao Random Forest.** O SVM, que demonstrou desempenho superior na validação cruzada, não foi otimizado. Em uma extensão deste trabalho, faria GridSearch sobre os hiperparâmetros C e gamma do SVM.
 
-#### Médio Prazo (3–6 meses)
-
-1. **Aplicar GridSearch ao SVM (RBF)** — pode superar o Random Forest
-2. **Integrar modelo ao sistema de visão computacional** da classificadora
-3. **Coletar 5.000+ novas amostras** para retraining, especialmente de BARBUNYA e BOMBAY
-4. **Definir LSL/USL operacionais com engenharia de processo** (os limites adotados aqui são assumidos)
-5. **Reduzir variabilidade do processo** — meta: Cpk > 1,33 em variáveis-chave por variedade
-
-**Investimento:** médio
-**ROI esperado:** redução de 25% em custos de qualidade
-
-#### Longo Prazo (6+ meses)
-
-1. **MLOps:** pipeline de retraining automático, monitoramento de drift, versionamento
-2. **CEP avançado:** incorporar séries temporais (ARIMA ou LSTM) para padrões de safra
-3. **Expansão a outras culturas:** arroz, café, soja, com a mesma metodologia
-4. **API REST para inferência em tempo real** — latência < 100ms por grão
-
-**Investimento:** alto
-**ROI esperado:** ganho de 30–40% em eficiência operacional
-
-### 3. Recomendações por Stakeholder
-
-#### Gestão de Qualidade
-- ✅ Aprovar modelo RF otimizado para piloto
-- ✅ Implementar monitoramento CEP contínuo
-- ✅ Investir em melhoria de capacidade do processo (elevar Cpk)
-
-#### Engenharia de Processo
-- ✅ Segregar linha por variedade (reduz variação especial)
-- ✅ Validar LSL/USL operacionais
-- ✅ Investigar os 1.124 outliers (causas especiais ou variedades extremas?)
-
-#### TI / Automação
-- ✅ Implementar API REST de inferência (Flask ou FastAPI)
-- ✅ Integrar com sistema de visão computacional
-- ✅ Configurar logging e monitoramento (latência, drift, taxa de acerto)
-
-#### Operações
-- ✅ Treinar operadores em interpretação da classificação automática
-- ✅ Estabelecer procedimentos de fallback (inspeção manual em casos de baixa confiança)
-- ✅ Coletar feedback para ajustes do modelo
-
-### 4. Limitações do Estudo
-
-1. **BOMBAY com suporte insuficiente no teste (n = 3)** — a remoção agressiva por Z-score prejudicou a classe
-2. **LSL/USL assumidos arbitrariamente** — necessária validação com engenharia
-3. **Sem dimensão temporal** — modelo não captura padrões de safra ou desgaste de equipamento
-4. **Multicolinearidade elevada** — entre Area/ConvexArea/EquivDiameter (r ≈ 0,99), pouco problemático para RF mas reduz interpretabilidade
-5. **Taxa de erro ~8% na diagonal da matriz de confusão** — aceitável, mas não tolerável em aplicações críticas
-
-### 5. Conclusão Final
-
-Este estudo demonstrou que é **viável implementar um sistema automático de classificação de variedades de feijão** com F1-macro de **90,36%** em conjunto de teste, usando Random Forest otimizado. O **SVM (RBF)** apresentou desempenho superior em validação cruzada (F1 = 0,9410) e deve ser considerado como alternativa ou complemento em um próximo ciclo de desenvolvimento.
-
-O processo apresenta-se **fora de controle estatístico e incapaz** (Cpk << 1,33) quando avaliado de forma agregada — mas isso decorre principalmente da **heterogeneidade inerente à mistura de variedades**. A recomendação central é **segregar a linha por variedade**, permitindo CEP individualizado, e **integrar o modelo ML** como segunda camada de validação automática.
-
-Com execução adequada das recomendações, estima-se **redução de 25–40% em custos de qualidade** nos próximos 6 meses.
+**Multicolinearidade não tratada.** Mantive as 16 features para todos os modelos, sabendo que isso prejudica a Regressão Logística por multicolinearidade. Uma análise mais cuidadosa removeria features redundantes (ConvexArea, EquivDiameter) ou aplicaria PCA antes da Regressão Logística.
 
 ---
 
-<a id="anexos"></a>
-## ANEXOS TÉCNICOS
+## 11. Conclusões
 
-### A. Configuração Técnica
+Este trabalho mostrou que é tecnicamente viável construir um classificador automático de variedades de feijão com desempenho satisfatório — F1-macro de aproximadamente 0,90 a 0,94, dependendo do algoritmo escolhido. O melhor modelo em validação cruzada foi o SVM com núcleo RBF, enquanto o Random Forest otimizado, embora tenha sido o foco da metodologia, teve desempenho inferior ao SVM no conjunto de teste.
 
-```
-Python:   3.10+
-Ambiente: Google Colab (CPU)
-RAM:      ~3 GB utilizada
-Tempo total de execução: ~5 minutos
-  ├─ Carga + EDA:       ~30s
-  ├─ CEP:               ~20s
-  ├─ Preparação:        ~10s
-  ├─ CV (3 modelos):    ~60s
-  ├─ GridSearchCV:     ~200s
-  └─ Avaliação:         ~20s
-```
+O resultado mais relevante do ponto de vista do CEP, no entanto, não é o desempenho do modelo de classificação, mas o diagnóstico de que o processo agregado é incapaz (Cpk entre 0,38 e 0,47) precisamente porque agrega variedades distintas em uma mesma análise. Esse achado, somado às oito amplitudes fora do UCL na carta R de Area, sustenta a recomendação técnica de **segregação da linha de classificação por variedade**, com CEP individualizado para cada subprocesso. Esta recomendação não é uma generalidade — ela vem direto dos dados deste trabalho.
 
-### B. Reprodutibilidade
-
-- Seed fixado em `42` (NumPy, sklearn, train_test_split, RandomForest)
-- Dataset carregado via `ucimlrepo` (versão oficial UCI)
-- Bibliotecas especificadas em `requirements.txt`
-
-### C. Referências Bibliográficas
-
-1. Montgomery, D. C. (2020). *Introduction to Statistical Quality Control* (8ª ed.). John Wiley & Sons.
-2. Koklu, M., & Ozkan, I. A. (2020). *Multiclass classification of dry beans using computer vision and machine learning techniques*. Computers and Electronics in Agriculture, 174, 105507.
-3. Géron, A. (2019). *Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow* (2ª ed.).
-4. Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning*.
-5. UCI Machine Learning Repository — Dry Bean Dataset: https://archive.ics.uci.edu/dataset/602/dry+bean+dataset
-
-### D. Interpretação de Métricas
-
-| Métrica | Fórmula | Interpretação |
-|---------|---------|---------------|
-| **Precisão** | TP / (TP + FP) | Dos positivos previstos, quantos estão corretos |
-| **Recall** | TP / (TP + FN) | Dos positivos reais, quantos foram capturados |
-| **F1-score** | 2·(P·R) / (P + R) | Média harmônica entre Precisão e Recall |
-| **F1-macro** | Média simples dos F1 por classe | Trata cada classe com igual importância |
-| **F1-weighted** | Média ponderada por suporte | Dá mais peso a classes majoritárias |
-| **Acurácia** | (TP + TN) / Total | Porcentagem geral de acertos |
-
-**Legenda:** TP = Verdadeiro Positivo, FP = Falso Positivo, TN = Verdadeiro Negativo, FN = Falso Negativo
+A limitação mais importante a ser corrigida em uma próxima iteração é o critério global de detecção de outliers, que precisaria ser substituído por um critério por classe para evitar a despopulação artificial da classe BOMBAY.
 
 ---
 
-**Relatório preparado por:** Maria Eduarda Lobo Montenegro
-**Orientação metodológica:** Prof. Andre Luiz Marques Serrano
-**Disciplina:** Controle Estatístico de Processos — UnB
-**Data:** Abril de 2026
-**Versão:** 1.0
-**Status:** Análise executada, validada e aprovada para distribuição
+## Referências
+
+Koklu, M. & Ozkan, I. A. (2020). *Multiclass classification of dry beans using computer vision and machine learning techniques*. Computers and Electronics in Agriculture, vol. 174, 105507.
+
+Montgomery, D. C. (2020). *Introdução ao Controle Estatístico da Qualidade*. 8ª edição. Wiley. (capítulos 4 a 8 utilizados como referência principal para CEP, cartas X-barra e R e índices de capacidade)
+
+Pedregosa, F. et al. (2011). *Scikit-learn: Machine Learning in Python*. Journal of Machine Learning Research, vol. 12, pp. 2825-2830.
+
+UCI Machine Learning Repository. Dry Bean Dataset, id=602. Disponível em https://archive.ics.uci.edu/dataset/602/dry+bean+dataset.
 
 ---
 
-*Fim do Relatório Técnico Completo*
+*Código-fonte completo e dados reproduzíveis em https://github.com/melobomontenegro-dev/CEP_Projeto_Maria_Eduarda*
