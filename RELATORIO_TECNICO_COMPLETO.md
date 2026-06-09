@@ -34,7 +34,7 @@ Originalmente são 13.611 amostras descritas por 17 colunas — 16 features num�
 
 A target apresenta um desbalanceamento moderado. DERMASON é a variedade mais frequente, com 3.546 grãos (26,05% das amostras), enquanto BOMBAY é a menos frequente, com 522 grãos (3,84%).
 
-![Distribuição das variedades no dataset](figuras/fig_01_cell05.png)
+![Distribuição das variedades no dataset](figuras/01_distribuicao_classes.png)
 *Gráfico 1. Contagem absoluta de grãos por variedade. DERMASON e SIRA dominam o dataset, enquanto BOMBAY é nitidamente sub-representada.* A razão entre a classe majoritária e a minoritária é de aproximadamente sete vezes. Esse grau de desbalanceamento não é extremo a ponto de exigir técnicas pesadas de balanceamento como SMOTE ou ADASYN, mas é suficiente para tornar a acurácia uma métrica enganosa — um classificador que sempre previsse DERMASON teria mais de um quarto das previsões "certas" sem ter aprendido nada útil. Por isso, optei pela **F1-macro** como métrica principal, conforme discutido nas aulas de avaliação de modelos. O F1-macro pondera as sete classes igualmente, independentemente do tamanho de cada uma.
 
 ### As 16 features morfológicas
@@ -77,7 +77,7 @@ Esse contraste tem uma implicação direta para o CEP. Features com CV baixo ser
 
 Os histogramas das principais features confirmam visualmente o que as estatísticas indicaram. Area e Perimeter apresentam forte assimetria à direita, com cauda longa onde está o BOMBAY. MajorAxisLength e MinorAxisLength mostram distribuições visualmente multimodais — vejo dois ou três picos sobrepostos, o que reflete a estrutura latente das classes (grãos de tamanhos diferentes formam picos diferentes na distribuição agregada). AspectRatio e Eccentricity, por serem quantidades adimensionais, são as mais "bem comportadas".
 
-![Distribuições marginais das principais features](figuras/fig_02_cell08.png)
+![Distribuições marginais das principais features](figuras/02_histogramas_features.png)
 *Gráfico 2. Histogramas das seis features morfológicas mais relevantes. A assimetria à direita em Area e Perimeter, e a multimodalidade em MajorAxisLength, são pistas visuais da heterogeneidade entre variedades.*
 
 Essa assimetria tem uma consequência importante para o CEP que farei adiante. Os índices Cp e Cpk são derivados assumindo que a variável segue uma distribuição aproximadamente normal (Montgomery, 2020, Cap. 8). Quando essa premissa é violada, os índices podem subestimar ou superestimar a capacidade real do processo. Vou retomar essa discussão na seção de CEP.
@@ -92,7 +92,7 @@ A matriz de correlação de Pearson entre as 16 features revela uma estrutura de
 - **AspectRatio e Eccentricity**: cerca de 0,96.
 - **Compactness e ShapeFactor3**: cerca de 0,98.
 
-![Matriz de correlação entre as 16 features](figuras/fig_03_cell09.png)
+![Matriz de correlação entre as 16 features](figuras/03_matriz_correlacao.png)
 *Gráfico 3. Matriz de correlação de Pearson. Os blocos intensos (próximos de +1 ou -1) indicam pares redundantes — em especial as três medidas de tamanho (Area, ConvexArea, EquivDiameter) e o par AspectRatio/Eccentricity.*
 
 Essa redundância é problemática para a Regressão Logística — a multicolinearidade gera instabilidade nos coeficientes e dificulta a interpretação. Para o Random Forest, é menos crítico (árvores selecionam features individualmente em cada split), e para o SVM com núcleo RBF é praticamente irrelevante (o kernel mapeia tudo para um espaço de dimensionalidade superior). Por isso, decidi manter as 16 features para os três modelos, deixando a Regressão Logística "sofrer" um pouco como referência comparativa, em vez de remover variáveis e perder a possibilidade de comparar todos os algoritmos em pé de igualdade.
@@ -117,10 +117,10 @@ A carta R (amplitude), no entanto, apresentou **um subgrupo com amplitude acima 
 
 A situação se repete e se agrava para Area. A carta X-barra permanece estável (linha central em torno de 53.048, nenhum ponto fora dos limites), mas a carta R apresenta **oito subgrupos com amplitude acima do UCL**, ou seja, 20% dos subgrupos. Isso é uma forte indicação de que o processo, do jeito que foi amostrado, está fora de controle estatístico em termos de variabilidade.
 
-![Cartas X-barra e R para MajorAxisLength](figuras/fig_05_cell12.png)
+![Cartas X-barra e R para MajorAxisLength](figuras/05_cartas_majoraxislength.png)
 *Gráfico 4. Cartas X-barra e R para MajorAxisLength, com n=5 e 40 subgrupos. A média permanece estável dentro dos limites, mas a amplitude apresenta um ponto isolado acima do UCL.*
 
-![Cartas X-barra e R para Area](figuras/fig_07_cell14.png)
+![Cartas X-barra e R para Area](figuras/07_cartas_area.png)
 *Gráfico 5. Cartas X-barra e R para Area. A média também é estável, mas oito subgrupos (20% da amostra) apresentam amplitude fora dos limites — sinal claro de causas especiais.*
 
 A interpretação que faço — e que considero o achado mais importante deste trabalho até aqui — é que essa instabilidade não decorre de uma falha no processo de manufatura ou de instabilidade na máquina de classificação. Decorre simplesmente do fato de que o "processo" que estou analisando, na prática, é uma mistura aleatória de sete variedades distintas. Subgrupos que por acaso contêm BOMBAY apresentam amplitudes muito maiores do que aqueles que contêm apenas variedades de tamanho similar. **A solução adequada para este processo seria estratificar a linha por variedade e aplicar CEP separadamente em cada uma**, não tentar aplicar CEP a um processo essencialmente heterogêneo.
@@ -145,7 +145,7 @@ Os resultados foram:
 
 Segundo a classificação convencional discutida em Montgomery (2020, Cap. 8), valores de Cpk inferiores a 1,00 caracterizam um processo **incapaz** — incapaz, no sentido técnico, de atender consistentemente às especificações dentro dos limites adotados. Para classificar um processo como "capaz", a literatura sugere Cpk de pelo menos 1,33; para "excelente", acima de 1,67.
 
-![Histograma de capacidade para Area](figuras/fig_08_cell14.png)
+![Histograma de capacidade para Area](figuras/08_capacidade_area.png)
 *Gráfico 6. Distribuição de Area com indicação dos limites LSL e USL adotados. A cauda à direita (BOMBAY) puxa a média para longe do centro do intervalo de especificação, gerando Cpk = 0,38.*
 
 A diferença entre Cp e Cpk indica que o processo, além de pouco capaz, está descentralizado — a média não coincide com o centro do intervalo de especificação. O fato de Pp e Ppk coincidirem com Cp e Cpk indica que não há diferença relevante entre a variabilidade dentro dos subgrupos e a variabilidade global, ou seja, o processo não apresenta tendência sistemática ao longo das amostras.
@@ -213,7 +213,7 @@ O SVM com núcleo RBF apresentou não apenas a maior média (0,9410 versus 0,906
 
 Investigando esses números, identifiquei o que provavelmente causou essa instabilidade: o fold de pior desempenho deve ter sido aquele em que BOMBAY ficou sobre-representada na validação, gerando previsões instáveis em uma classe com poucos exemplos. O SVM, ao trabalhar em um espaço de kernel diferente, parece ter sido mais robusto a essa instabilidade.
 
-![Comparação dos três modelos na validação cruzada](figuras/fig_09_cell21.png)
+![Comparação dos três modelos na validação cruzada](figuras/09_comparacao_modelos.png)
 *Gráfico 7. Comparação dos três modelos por validação cruzada. As caixas indicam dispersão entre os cinco folds — o SVM destaca-se não tanto pela média superior, mas pela consistência (caixa quase imperceptível).*
 
 ### 7.3 Diagnóstico de overfitting
@@ -282,14 +282,14 @@ Algumas observações sobre estes números:
 
 ### 9.3 Matriz de confusão e importância das features
 
-![Matriz de confusão do Random Forest otimizado](figuras/fig_10_cell27.png)
+![Matriz de confusão do Random Forest otimizado](figuras/10_matriz_confusao.png)
 *Gráfico 8. Matriz de confusão no conjunto de teste. A diagonal concentra a vasta maioria dos casos; a confusão mais relevante ocorre entre SIRA e DERMASON, variedades morfologicamente próximas.*
 
 A matriz de confusão mostra a diagonal principal dominante, com a maior parte dos erros concentrada no par SIRA ↔ DERMASON, como antecipado pela análise das classes. Os demais erros são pulverizados, sem padrão sistemático preocupante.
 
 A análise de importância das features feita pelo Random Forest otimizado coloca no topo do ranking os fatores de forma (ShapeFactor3 e Compactness) e as medidas de tamanho (Area, MajorAxisLength). Esse resultado tem uma interpretação relevante: as razões morfológicas (adimensionais, normalizadas) discriminam melhor do que as medidas absolutas de tamanho. Isso faz sentido na perspectiva de classificação de variedades — o que define uma variedade não é apenas o tamanho, mas o "formato" do grão.
 
-![Importância das features no Random Forest otimizado](figuras/fig_11_cell28.png)
+![Importância das features no Random Forest otimizado](figuras/11_importancia_features.png)
 *Gráfico 9. Importância das 16 features segundo o Random Forest otimizado. Shape factors e medidas de compactação aparecem entre as mais discriminantes.*
 
 ### 9.4 Comparação final entre os três modelos
