@@ -10,7 +10,7 @@ Abril de 2026
 
 ## Resumo
 
-Este trabalho aplica as ferramentas de Controle Estatístico de Processos (CEP) e algoritmos de aprendizado de máquina ao problema de classificação automática de variedades comerciais de grãos de feijão. O conjunto de dados utilizado é o *Dry Bean Dataset*, publicado por Koklu e Ozkan (2020) e disponível no UCI Machine Learning Repository, contendo 13.611 grãos individuais descritos por 16 atributos morfológicos extraídos por visão computacional. Foram construídas cartas de controle X-barra e R e calculados os índices Cp, Cpk, Pp e Ppk para duas variáveis dimensionais (MajorAxisLength e Area). Em seguida, três algoritmos de classificação supervisionada foram treinados e comparados — Regressão Logística, Random Forest e Support Vector Machine com núcleo radial — com validação cruzada estratificada de cinco subdivisões. O Random Forest passou por otimização de hiperparâmetros via GridSearchCV. O modelo otimizado atingiu F1-macro de 0,9036 no conjunto de teste, com acurácia de 91,73%. A análise de capacidade do processo, no entanto, indicou Cpk de 0,38 a 0,47 — valores que caracterizam o processo como incapaz segundo os critérios de Montgomery (2020). Discuto criticamente este achado e mostro que ele decorre principalmente da heterogeneidade entre variedades, não de uma falha intrínseca do processo de manufatura.
+Este trabalho aplica as ferramentas de Controle Estatístico de Processos (CEP) e algoritmos de aprendizado de máquina ao problema de classificação automática de variedades comerciais de grãos de feijão. O conjunto de dados utilizado é o *Dry Bean Dataset*, publicado por Koklu e Ozkan (2020) e disponível no UCI Machine Learning Repository, contendo 13.611 grãos individuais descritos por 16 atributos morfológicos extraídos por visão computacional. Foram construídas cartas de controle X-barra e R e calculados os índices Cp, Cpk, Pp e Ppk para duas variáveis dimensionais (MajorAxisLength e Area). Em seguida, três algoritmos de classificação supervisionada foram treinados e comparados — Regressão Logística, Random Forest e Support Vector Machine com núcleo radial — com validação cruzada estratificada de cinco subdivisões. O Random Forest passou por otimização de hiperparâmetros via GridSearchCV. O modelo otimizado atingiu F1-macro de 0,9036 no conjunto de teste, com acurácia de 91,73%. A análise de capacidade do processo, no entanto, revelou uma divergência marcante entre os índices de curto prazo (Cp e Cpk, com valores muito altos por usarem a variabilidade dentro de subgrupos) e os de longo prazo (Pp e Ppk, com valores baixos por usarem a variabilidade global). Os Ppk obtidos, de 0,38 para Area e 0,47 para MajorAxisLength, caracterizam o processo agregado como incapaz segundo os critérios de Montgomery (2020). Discuto criticamente este achado e mostro que ele decorre principalmente da heterogeneidade entre variedades, não de uma falha intrínseca do processo de manufatura.
 
 ---
 
@@ -132,25 +132,25 @@ Para calcular Cp, Cpk, Pp e Ppk, precisei definir limites de especificação (LS
 - **MajorAxisLength**: LSL = 200 pixels, USL = 700 pixels (faixa de 500).
 - **Area**: LSL = 20.000 pixels, USL = 150.000 pixels (faixa de 130.000).
 
-Esses limites foram escolhidos para cobrir a faixa observada das principais variedades, excluindo apenas os extremos mais atípicos. Considerei usar limites mais estreitos, mas isso resultaria em Cpk próximo de zero, o que não traria insight adicional sobre o comportamento do processo.
+Esses limites foram escolhidos para cobrir a faixa observada das principais variedades, excluindo apenas os extremos mais atípicos.
 
 Os resultados foram:
 
 | Índice | MajorAxisLength | Area |
 |---|---:|---:|
-| Cp | 0,972 | 0,739 |
-| Cpk | 0,467 | 0,376 |
+| Cp | 8,311 | 197,240 |
+| Cpk | 3,994 | 100,284 |
 | Pp | 0,972 | 0,739 |
 | Ppk | 0,467 | 0,376 |
 
-Segundo a classificação convencional discutida em Montgomery (2020, Cap. 8), valores de Cpk inferiores a 1,00 caracterizam um processo **incapaz** — incapaz, no sentido técnico, de atender consistentemente às especificações dentro dos limites adotados. Para classificar um processo como "capaz", a literatura sugere Cpk de pelo menos 1,33; para "excelente", acima de 1,67.
+Aqui aparece uma divergência notável entre os índices de curto prazo (Cp e Cpk) e os de longo prazo (Pp e Ppk). Os primeiros estão muito altos, classificando o processo como "excelente" pelos critérios convencionais, enquanto os segundos estão baixos, caracterizando-o como incapaz. Como Cp e Cpk usam o desvio padrão estimado pela amplitude média dos subgrupos (sigma de curto prazo, R̄/d₂), e Pp e Ppk usam o desvio padrão amostral global, essa divergência tem uma explicação técnica clara: o sigma de curto prazo é pequeno porque cinco amostras consecutivas no dataset tendem a ser da mesma variedade (já que o conjunto vem agrupado por classe), enquanto o sigma global é muito maior porque inclui toda a heterogeneidade entre variedades.
 
 ![Histograma de capacidade para Area](figuras/08_capacidade_area.png)
-*Gráfico 6. Distribuição de Area com indicação dos limites LSL e USL adotados. A cauda à direita (BOMBAY) puxa a média para longe do centro do intervalo de especificação, gerando Cpk = 0,38.*
+*Gráfico 6. Distribuição de Area com indicação dos limites LSL e USL adotados. A cauda à direita (BOMBAY) puxa a média para longe do centro do intervalo de especificação, gerando Ppk = 0,38.*
 
-A diferença entre Cp e Cpk indica que o processo, além de pouco capaz, está descentralizado — a média não coincide com o centro do intervalo de especificação. O fato de Pp e Ppk coincidirem com Cp e Cpk indica que não há diferença relevante entre a variabilidade dentro dos subgrupos e a variabilidade global, ou seja, o processo não apresenta tendência sistemática ao longo das amostras.
+A diferença gritante entre os pares de índices é, na verdade, o achado mais técnico da análise de capacidade. Em um processo industrial estável, Cp e Pp deveriam ter valores próximos. Diferenças entre eles indicam que a variabilidade entre subgrupos é muito maior que a variabilidade dentro deles, ou seja, que a média do processo está mudando ao longo do tempo. No meu caso, com Cp = 8,311 e Pp = 0,972 para MajorAxisLength (e Cp = 197 contra Pp = 0,74 para Area), a diferença é de quase uma ordem de grandeza, indicando forte instabilidade temporal. Isso é coerente com o que as cartas R já mostraram: quando o subgrupo "calha" de incluir uma amostra de variedade diferente, a média muda drasticamente.
 
-A conclusão dessa análise reforça o que as cartas R já tinham mostrado: o "processo" agregado é incapaz porque é uma mistura de sete subprocessos diferentes (um por variedade). A recomendação técnica, alinhada com a engenharia de processo aplicada à agroindústria, seria a segregação de linhas — uma linha por variedade ou família de variedades de tamanho similar — para que CEP individualizado possa ser aplicado de forma significativa.
+Pela classificação de Montgomery (2020, Cap. 8), Ppk inferior a 1,33 caracteriza o processo agregado como incapaz. Para classificar um processo como capaz, a literatura sugere Ppk de pelo menos 1,33; para excelente, acima de 1,67. Os valores de 0,47 e 0,38 obtidos estão bem abaixo desse patamar. Mas a conclusão é a mesma que vinha sendo construída ao longo da análise: o "processo" agregado é incapaz porque é uma mistura de sete subprocessos diferentes, um por variedade. A recomendação técnica, alinhada com a engenharia de processo aplicada à agroindústria, seria a segregação de linhas, uma linha por variedade ou família de variedades de tamanho similar, para que CEP individualizado possa ser aplicado de forma significativa.
 
 ---
 
@@ -327,7 +327,7 @@ Listo abaixo, em ordem de impacto, as limitações que identifiquei no trabalho:
 
 Este trabalho mostrou que é tecnicamente viável construir um classificador automático de variedades de feijão com desempenho satisfatório — F1-macro de aproximadamente 0,90 a 0,94, dependendo do algoritmo escolhido. O melhor modelo em validação cruzada foi o SVM com núcleo RBF, enquanto o Random Forest otimizado, embora tenha sido o foco da metodologia, teve desempenho inferior ao SVM no conjunto de teste.
 
-O resultado mais relevante do ponto de vista do CEP, no entanto, não é o desempenho do modelo de classificação, mas o diagnóstico de que o processo agregado é incapaz (Cpk entre 0,38 e 0,47) precisamente porque agrega variedades distintas em uma mesma análise. Esse achado, somado às oito amplitudes fora do UCL na carta R de Area, sustenta a recomendação técnica de **segregação da linha de classificação por variedade**, com CEP individualizado para cada subprocesso. Esta recomendação não é uma generalidade — ela vem direto dos dados deste trabalho.
+O resultado mais relevante do ponto de vista do CEP, no entanto, não é o desempenho do modelo de classificação, mas o diagnóstico de que o processo agregado é incapaz (Ppk entre 0,38 e 0,47) precisamente porque agrega variedades distintas em uma mesma análise. Esse achado, somado às oito amplitudes fora do UCL na carta R de Area, sustenta a recomendação técnica de **segregação da linha de classificação por variedade**, com CEP individualizado para cada subprocesso. Esta recomendação não é uma generalidade — ela vem direto dos dados deste trabalho.
 
 A limitação mais importante a ser corrigida em uma próxima iteração é o critério global de detecção de outliers, que precisaria ser substituído por um critério por classe para evitar a despopulação artificial da classe BOMBAY.
 
